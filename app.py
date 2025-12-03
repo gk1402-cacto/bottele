@@ -37,14 +37,8 @@ def webhook():
         data = cq["data"]
 
         if data == "verify":
-        # Telegram yêu cầu phải trả lời callback_query để tránh lỗi
-            requests.post(f"{API_URL}/answerCallbackQuery", json={
-                "callback_query_id": cq["id"]
-            })
-
-        # Gửi tin nhắn xác minh
+            requests.post(f"{API_URL}/answerCallbackQuery", json={"callback_query_id": cq["id"]})
             send_message(chat_id, "✅ Xác minh thành công!")
-
         return jsonify(success=True)
 
     if "message" in update:
