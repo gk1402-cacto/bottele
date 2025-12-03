@@ -29,7 +29,7 @@ def webhook():
         text = update["message"]["text"]
 
         if text == "/start":
-            send_message(chat_id, "Xin chào! bot bịp rõ :0")
+            send_message(chat_id, "Xin chào! bot bịp rõ \U0001F4E2 :0")
         else:
             send_message(chat_id, f"Bạn gửi: {text}")
 
