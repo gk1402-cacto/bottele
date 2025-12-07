@@ -102,9 +102,22 @@ def webhook():
 
        
         if text == "/start":
-            reply_markup = {"inline_keyboard": [[{"text": "✅ Xác Minh", "callback_data": "verify"}]]}
-            send_message(chat_id, "\U0001F4E2 Vui lòng tham gia các nhóm sau: \n @freekm12h", reply_markup=reply_markup)
+            groups = load_groups()["groups"]
+            if not groups:
+                send_message(chat_id, "Hiện chưa có nhóm nào để tham gia. Vui lòng thử lại sau.")
+                return jsonify(success=True)
+            group_list = "\n".join(groups)
+            reply_markup = {
+                "inline_keyboard": [[{"text": "Xác Minh", "callback_data": "verify"}]]
+            }
 
+            send_message(
+                chat_id,
+                f"Vui lòng tham gia các nhóm sau:\n{group_list}",
+                reply_markup=reply_markup
+            )
+            return jsonify(success=True)
+ 
         else:
             send_message(chat_id, f"Bạn gửi: {text}")
 
