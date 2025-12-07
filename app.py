@@ -8,6 +8,24 @@ if not TOKEN:
     raise Exception("Missing TELEGRAM_TOKEN environment variable")
 
 API_URL = f"https://api.telegram.org/bot{TOKEN}"
+import json
+
+ADMIN_ID = 8252036966
+GROUPS_FILE = "groups.json"
+
+def load_groups():
+    if not os.path.exists(GROUPS_FILE):
+        return {"groups": []}
+    with open(GROUPS_FILE, "r", encoding="utf-8") as f:
+        try:
+            return json.load(f)
+        except:
+            return {"groups": []}
+
+def save_groups(data):
+    with open(GROUPS_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4, ensure_ascii=False)
+
 
 app = Flask(__name__)
 
