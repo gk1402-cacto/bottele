@@ -53,11 +53,28 @@ def webhook():
         cq = update["callback_query"]
         chat_id = cq["message"]["chat"]["id"]
         data = cq["data"]
-
         if data == "verify":
             requests.post(f"{API_URL}/answerCallbackQuery", json={"callback_query_id": cq["id"]})
-            send_message(chat_id, "✅ Xác minh thành công!")
-        return jsonify(success=True)
+            chat_id = cq["message"]["chat"]["id"]      # dùng để gửi tin nhắn
+            user_id = cq["from"]["id"]                 # dùng để kiểm tra join nhóm
+            groups = load_groups()["groups"]
+            not_joined = []
+            for g in groups:
+                check = requests.get(f"{API_URL}/getChatMember", params={"chat_id": g,"user_id": user_id}).json()
+                try:
+                    status = check["result"]["status"]
+                    if status not in ["member", "administrator", "creator"]:
+                        not_joined.append(g)
+                except:
+                    not_joined.append(g)
+
+            if not_joined:
+                missing = "\n".join(not_joined)
+                send_message(chat_id, f"❌ Bạn chưa tham gia đủ nhóm:\n{missing}")
+                return jsonify(success=True)
+            send_message(chat_id, "✅ Bạn đã tham gia đầy đủ nhóm!")
+            return jsonify(success=True)
+
 
     if "message" in update:
         chat_id = update["message"]["chat"]["id"]
