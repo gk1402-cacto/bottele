@@ -62,7 +62,45 @@ def webhook():
     if "message" in update:
         chat_id = update["message"]["chat"]["id"]
         text = update["message"]["text"]
+        if chat_id == ADMIN_ID:
+            if text.startswith("/addgroup"):
+                try:
+                    group = text.split(" ", 1)[1].strip()
+                    data = load_groups()
+                    if group not in data["groups"]:
+                        data["groups"].append(group)
+                        save_groups(data)
+                        send_message(chat_id, f"Đã thêm nhóm: {group}")
+                    else:
+                        send_message(chat_id, "Nhóm này đã có trong danh sách.")
+                except:
+                    send_message(chat_id, "Sai cú pháp. Dùng: /addgroup @tennhom")
+                return jsonify(success=True)
 
+            if text.startswith("/delgroup"):
+                try:
+                    group = text.split(" ", 1)[1].strip()
+                    data = load_groups()
+                    if group in data["groups"]:
+                        data["groups"].remove(group)
+                        save_groups(data)
+                        send_message(chat_id, f"Đã xóa nhóm: {group}")
+                    else:
+                        send_message(chat_id, "Nhóm này không tồn tại trong danh sách.")
+                except:
+                    send_message(chat_id, "Sai cú pháp. Dùng: /delgroup @tennhom")
+                return jsonify(success=True)
+
+            if text == "/listgroups":
+                data = load_groups()
+                if not data["groups"]:
+                    send_message(chat_id, "Danh sách nhóm đang trống.")
+                else:
+                    groups_msg = "\n".join(data["groups"])
+                    send_message(chat_id, f"Danh sách nhóm:\n{groups_msg}")
+                return jsonify(success=True)
+
+       
         if text == "/start":
             reply_markup = {"inline_keyboard": [[{"text": "✅ Xác Minh", "callback_data": "verify"}]]}
             send_message(chat_id, "\U0001F4E2 Vui lòng tham gia các nhóm sau: \n @freekm12h", reply_markup=reply_markup)
