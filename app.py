@@ -26,6 +26,21 @@ def save_groups(data):
     with open(GROUPS_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
 
+# Tạo menu lệnh hiển thị khi nhấn nút 4 ô vuông
+def set_commands():
+    url = f"{API_URL}/setMyCommands"
+    commands = {
+        "commands": [
+            {"command": "invite", "description": "Mời bạn bè"},
+            {"command": "account", "description": "Thông tin tài khoản"},
+            {"command": "withdraw", "description": "Rút code"},
+            {"command": "stats", "description": "Thống kê (admin)"}
+        ]
+    }
+    try:
+        requests.post(url, json=commands)
+    except Exception as e:
+        print("set_commands error:", e)
 
 app = Flask(__name__)
 
@@ -139,27 +154,47 @@ def webhook():
                         result += f"⚠️ Không thể kiểm tra nhóm: {g}\n"
                 send_message(chat_id, result)
                 return jsonify(success=True)
-    
-        if text == "/start":
+                
+        if text.startswith("/start"):
+            parts = text.split(" ")
+            referrer = None
+            if len(parts) > 1:
+                try:
+                    referrer = int(parts[1])
+                except:
+                    referrer = None
+            users = load_users()
+            user_id = str(chat_id)
+            if user_id not in users["users"]:
+                if referrer is not None and str(referrer) == user_id:
+                    referrer = None
+                users["users"][user_id] = {
+                    "ref": referrer,
+                    "points": 0,
+                    "verified": False
+                }
+                save_users(users)
             groups = load_groups()["groups"]
             if not groups:
-                send_message(chat_id, "⚠️ Hiện chưa có nhóm nào để tham gia. Vui lòng thử lại sau.")
+                send_message(chat_id, "⚠️ Hiện chưa có nhóm nào để tham gia.")
                 return jsonify(success=True)
+
             group_list = "\n".join(groups)
             reply_markup = {
                 "inline_keyboard": [[{"text": "✅ Xác Minh", "callback_data": "verify"}]]
             }
 
             send_message(
-                chat_id,
-                f"📢 Vui lòng tham gia các nhóm sau:\n{group_list}",
+                chat_id,f"📢 Vui lòng tham gia các nhóm sau:\n{group_list}",
                 reply_markup=reply_markup
             )
+
             return jsonify(success=True)
- 
+
         else:
             send_message(chat_id, f"Bạn gửi: {text}")
 
     return jsonify(success=True)
 if __name__ == "__main__":
+    set_commands()
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
