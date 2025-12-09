@@ -25,6 +25,20 @@ def load_groups():
 def save_groups(data):
     with open(GROUPS_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
+        
+USERS_FILE = "users.json"
+
+def load_users():
+    if not os.path.exists(USERS_FILE):
+        return {}
+    with open(USERS_FILE, "r", encoding="utf-8") as f:
+        try:
+            return json.load(f)
+        except:
+            return {}
+def save_users(users):
+    with open(USERS_FILE, "w", encoding="utf-8") as f:
+        json.dump(users, f, indent=4, ensure_ascii=False)
 
 # Tạo menu lệnh hiển thị khi nhấn nút 4 ô vuông
 def set_commands():
