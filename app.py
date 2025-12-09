@@ -121,8 +121,19 @@ def webhook():
             )
 
             return jsonify(success=True)
-
-
+        if data == "invite":
+            user_id = str(cq["from"]["id"])
+            # Lấy username bot để tạo link mời
+            bot_info = requests.get(f"{API_URL}/getMe").json()
+            bot_username = bot_info["result"]["username"]
+            referral_link = f"https://t.me/{bot_username}?start={user_id}"
+            send_message(
+                chat_id,
+                f"👥 <b>**LINH MỜI BẠN BÈ CỦA BẠN LÀ:</b>\n{referral_link}\n\n"
+                "📌 **MỜI 1 BẠN = 2500 VNĐ\n"
+                "🤝 **ĐIỂM TỐI THIỂU GIAO DỊCH:10000 VNĐ</b>!"
+            )
+            return jsonify(success=True)
 
     if "message" in update:
         chat_id = update["message"]["chat"]["id"]
