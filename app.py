@@ -101,8 +101,27 @@ def webhook():
                 missing = "\n".join(not_joined)
                 send_message(chat_id, f"❌ Bạn chưa tham gia đủ nhóm:\n{missing}")
                 return jsonify(success=True)
-            send_message(chat_id, "✅ Bạn đã tham gia đầy đủ nhóm!")
+            menu = {
+                "inline_keyboard": [
+                    [
+                        {"text": "👤 Thông tin tài khoản", "callback_data": "account"},
+                        {"text": "👥 Mời bạn bè", "callback_data": "invite"}
+                    ],
+                    [
+                        {"text": "💳 Rút code", "callback_data": "withdraw"},
+                        {"text": "📊 Thống kê", "callback_data": "stats"}
+                    ]
+                ]
+            }
+
+            send_message(
+                chat_id,
+                "🎉 Bạn đã xác minh thành công!\n\n🔽 Chọn một chức năng bên dưới:",
+                reply_markup=menu
+            )
+
             return jsonify(success=True)
+
 
 
     if "message" in update:
