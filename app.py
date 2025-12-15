@@ -1,106 +1,102 @@
-# app.py
 import os
-from flask import Flask, request, jsonify
+import json
 import requests
+from flask import Flask, request, jsonify
 
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
-if not TOKEN:
-    raise Exception("Missing TELEGRAM_TOKEN environment variable")
-
 API_URL = f"https://api.telegram.org/bot{TOKEN}"
-import json
 
 ADMIN_ID = 8252036966
 GROUPS_FILE = "groups.json"
+USERS_FILE = "users.json"
+
+app = Flask(__name__)
 
 def load_groups():
     if not os.path.exists(GROUPS_FILE):
         return {"groups": []}
     with open(GROUPS_FILE, "r", encoding="utf-8") as f:
-        try:
-            return json.load(f)
-        except:
-            return {"groups": []}
+        return json.load(f)
 
 def save_groups(data):
     with open(GROUPS_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
-        
-USERS_FILE = "users.json"
 
 def load_users():
     if not os.path.exists(USERS_FILE):
-        return {}
+        return {"users": {}}
     with open(USERS_FILE, "r", encoding="utf-8") as f:
-        try:
-            return json.load(f)
-        except:
-            return {}
-def save_users(users):
+        return json.load(f)
+
+def save_users(data):
     with open(USERS_FILE, "w", encoding="utf-8") as f:
-        json.dump(users, f, indent=4, ensure_ascii=False)
-
-# Tạo menu lệnh hiển thị khi nhấn nút 4 ô vuông
-def set_commands():
-    url = f"{API_URL}/setMyCommands"
-    commands = {
-        "commands": [
-            {"command": "invite", "description": "Mời bạn bè"},
-            {"command": "account", "description": "Thông tin tài khoản"},
-            {"command": "withdraw", "description": "Rút code"},
-            {"command": "stats", "description": "Thống kê (admin)"}
-        ]
-    }
-    try:
-        requests.post(url, json=commands)
-    except Exception as e:
-        print("set_commands error:", e)
-
-app = Flask(__name__)
+        json.dump(data, f, indent=4, ensure_ascii=False)
 
 def send_message(chat_id, text, reply_markup=None):
-    url = f"{API_URL}/sendMessage"
     payload = {
         "chat_id": chat_id,
         "text": text,
         "parse_mode": "HTML"
     }
-
     if reply_markup:
         payload["reply_markup"] = reply_markup
+    requests.post(f"{API_URL}/sendMessage", json=payload)
 
-    requests.post(url, json=payload)
+def set_commands():
+    requests.post(
+        f"{API_URL}/setMyCommands",
+        json={
+            "commands": [
+                {"command": "invite", "description": "Mời bạn bè"},
+                {"command": "account", "description": "Thông tin tài khoản"},
+                {"command": "withdraw", "description": "Rút code"},
+                {"command": "stats", "description": "Thống kê"}
+            ]
+        }
+    )
 
 @app.route("/")
 def home():
-    return "Bot Telegram đang chạy trên Render!"
+    return "Bot running"
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
     update = request.get_json()
+
     if "callback_query" in update:
         cq = update["callback_query"]
-        chat_id = cq["message"]["chat"]["id"]
         data = cq["data"]
+        chat_id = cq["message"]["chat"]["id"]
+        user_id = str(cq["from"]["id"])
+
+        requests.post(f"{API_URL}/answerCallbackQuery", json={"callback_query_id": cq["id"]})
+
+        users = load_users()
+        if "users" not in users:
+            users["users"] = {}
+
         if data == "verify":
-            requests.post(f"{API_URL}/answerCallbackQuery", json={"callback_query_id": cq["id"]})
-            chat_id = cq["message"]["chat"]["id"]      # dùng để gửi tin nhắn
-            user_id = cq["from"]["id"]                 # dùng để kiểm tra join nhóm
             groups = load_groups()["groups"]
             not_joined = []
             for g in groups:
-                check = requests.get(f"{API_URL}/getChatMember", params={"chat_id": g,"user_id": user_id}).json()
+                r = requests.get(f"{API_URL}/getChatMember", params={"chat_id": g, "user_id": user_id}).json()
                 try:
-                    status = check["result"]["status"]
-                    if status not in ["member", "administrator", "creator"]:
+                    if r["result"]["status"] not in ["member", "administrator", "creator"]:
                         not_joined.append(g)
                 except:
                     not_joined.append(g)
 
             if not_joined:
-                missing = "\n".join(not_joined)
-                send_message(chat_id, f"❌ Bạn chưa tham gia đủ nhóm:\n{missing}")
+                send_message(chat_id, "❌ Bạn chưa tham gia đủ nhóm:\n" + "\n".join(not_joined))
                 return jsonify(success=True)
+
+            if not users["users"][user_id]["verified"]:
+                users["users"][user_id]["verified"] = True
+                ref = users["users"][user_id]["ref"]
+                if ref and str(ref) in users["users"]:
+                    users["users"][str(ref)]["points"] += 3000
+                save_users(users)
+
             menu = {
                 "inline_keyboard": [
                     [
@@ -114,135 +110,98 @@ def webhook():
                 ]
             }
 
-            send_message(
-                chat_id,
-                "🎉 Bạn đã xác minh thành công!\n\n🔽 Chọn một chức năng bên dưới:",
-                reply_markup=menu
-            )
-
+            send_message(chat_id, "🎉 Xác minh thành công", reply_markup=menu)
             return jsonify(success=True)
+
         elif data == "invite":
-            user_id = str(cq["from"]["id"])
-            # Lấy username bot để tạo link mời
-            bot_info = requests.get(f"{API_URL}/getMe").json()
-            bot_username = bot_info["result"]["username"]
-            referral_link = f"https://t.me/{bot_username}?start={user_id}"
+            bot = requests.get(f"{API_URL}/getMe").json()
+            link = f"https://t.me/{bot['result']['username']}?start={user_id}"
             send_message(
                 chat_id,
-                f"👥 <b>LINH MỜI BẠN BÈ CỦA BẠN LÀ:</b>\n{referral_link}\n\n"
-                "📌 MỜI 1 BẠN = 2500 VNĐ\n"
-                "🤝 ĐIỂM TỐI THIỂU GIAO DỊCH:10000 VNĐ</b>!"
+                f"👥 <b>LINK MỜI BẠN BÈ</b>\n{link}\n\n"
+                "📌 Mỗi lượt xác minh +3000 điểm\n"
+                "💰 Rút tối thiểu 10000 điểm"
             )
+            return jsonify(success=True)
+
+        elif data == "account":
+            p = users["users"][user_id]["points"]
+            send_message(chat_id, f"👤 ID: {user_id}\n💰 Điểm: {p}")
+            return jsonify(success=True)
+
+        elif data == "withdraw":
+            send_message(chat_id, "💳 Chức năng rút code sẽ mở sớm")
+            return jsonify(success=True)
+
+        elif data == "stats":
+            if int(user_id) != ADMIN_ID:
+                send_message(chat_id, "❌ Bạn không có quyền")
+                return jsonify(success=True)
+            total = len(users["users"])
+            send_message(chat_id, f"📊 Tổng user: {total}")
             return jsonify(success=True)
 
     if "message" in update:
         chat_id = update["message"]["chat"]["id"]
-        text = update["message"]["text"]
+        text = update["message"].get("text", "")
+
         if chat_id == ADMIN_ID:
             if text.startswith("/addgroup"):
-                try:
-                    group = text.split(" ", 1)[1].strip()
-                    data = load_groups()
-                    if group not in data["groups"]:
-                        data["groups"].append(group)
-                        save_groups(data)
-                        send_message(chat_id, f"Đã thêm nhóm: {group}")
-                    else:
-                        send_message(chat_id, "Nhóm này đã có trong danh sách.")
-                except:
-                    send_message(chat_id, "Sai cú pháp. Dùng: /addgroup @tennhom")
+                g = text.split(" ", 1)[1]
+                data = load_groups()
+                if g not in data["groups"]:
+                    data["groups"].append(g)
+                    save_groups(data)
+                send_message(chat_id, "Đã thêm nhóm")
                 return jsonify(success=True)
 
             if text.startswith("/delgroup"):
-                try:
-                    group = text.split(" ", 1)[1].strip()
-                    data = load_groups()
-                    if group in data["groups"]:
-                        data["groups"].remove(group)
-                        save_groups(data)
-                        send_message(chat_id, f"Đã xóa nhóm: {group}")
-                    else:
-                        send_message(chat_id, "Nhóm này không tồn tại trong danh sách.")
-                except:
-                    send_message(chat_id, "Sai cú pháp. Dùng: /delgroup @tennhom")
+                g = text.split(" ", 1)[1]
+                data = load_groups()
+                if g in data["groups"]:
+                    data["groups"].remove(g)
+                    save_groups(data)
+                send_message(chat_id, "Đã xóa nhóm")
                 return jsonify(success=True)
 
             if text == "/listgroups":
                 data = load_groups()
-                if not data["groups"]:
-                    send_message(chat_id, "Danh sách nhóm đang trống.")
-                else:
-                    groups_msg = "\n".join(data["groups"])
-                    send_message(chat_id, f"Danh sách nhóm:\n{groups_msg}")
+                send_message(chat_id, "\n".join(data["groups"]))
                 return jsonify(success=True)
-            if text == "/checkbot":
-                data = load_groups()
-                groups = data["groups"]
-                if not groups:
-                    send_message(chat_id, "❗ Danh sách nhóm trống, không có nhóm nào để kiểm tra.")
-                    return jsonify(success=True)
-                result = "📌 Kết quả kiểm tra bot trong các nhóm:\n\n"
-                bot_id = TOKEN.split(':')[0]
-                for g in groups:
-                    check = requests.get(f"{API_URL}/getChatMember", params={
-                        "chat_id": g,
-                        "user_id": bot_id
-                    }).json()
-                    try:
-                        status = check["result"]["status"]
-                        if status in ["administrator", "creator"]:
-                            result += f"✅ Bot là admin của: {g}\n"
-                        else:
-                            result += f"❌ Bot KHÔNG phải admin của: {g}\n"
-                    except:
-                        result += f"⚠️ Không thể kiểm tra nhóm: {g}\n"
-                send_message(chat_id, result)
-                return jsonify(success=True)
-                
+
         if text.startswith("/start"):
             parts = text.split(" ")
-            referrer = None
+            ref = None
             if len(parts) > 1:
                 try:
-                    referrer = int(parts[1])
+                    ref = int(parts[1])
                 except:
-                    referrer = None
+                    pass
+
             users = load_users()
             if "users" not in users:
                 users["users"] = {}
 
-            user_id = str(chat_id)
-            if user_id not in users["users"]:
-
-                if referrer is not None and str(referrer) == user_id:
-                    referrer = None
-                users["users"][user_id] = {
-                    "ref": referrer,
+            if str(chat_id) not in users["users"]:
+                if ref == chat_id:
+                    ref = None
+                users["users"][str(chat_id)] = {
+                    "ref": ref,
                     "points": 0,
                     "verified": False
                 }
                 save_users(users)
+
             groups = load_groups()["groups"]
-            if not groups:
-                send_message(chat_id, "⚠️ Hiện chưa có nhóm nào để tham gia.")
-                return jsonify(success=True)
-
-            group_list = "\n".join(groups)
-            reply_markup = {
-                "inline_keyboard": [[{"text": "✅ Xác Minh", "callback_data": "verify"}]]
-            }
-
             send_message(
-                chat_id,f"📢 Vui lòng tham gia các nhóm sau:\n{group_list}",
-                reply_markup=reply_markup
+                chat_id,
+                "📢 Tham gia các nhóm sau:\n" + "\n".join(groups),
+                reply_markup={"inline_keyboard": [[{"text": "✅ Xác Minh", "callback_data": "verify"}]]}
             )
-
             return jsonify(success=True)
 
-        else:
-            send_message(chat_id, f"Bạn gửi: {text}")
-
     return jsonify(success=True)
+
 if __name__ == "__main__":
     set_commands()
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
