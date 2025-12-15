@@ -183,6 +183,30 @@ def webhook():
                     save_groups(data)
                 send_message(chat_id, "Đã xóa nhóm")
                 return jsonify(success=True)
+               
+            if text == "/checkbot":
+                data = load_groups()
+                groups = data["groups"]
+                if not groups:
+                    send_message(chat_id, "❗ Danh sách nhóm trống, không có nhóm nào để kiểm tra.")
+                    return jsonify(success=True)
+                result = "📌 Kết quả kiểm tra bot trong các nhóm:\n\n"
+                bot_id = TOKEN.split(':')[0]
+                for g in groups:
+                    check = requests.get(f"{API_URL}/getChatMember", params={
+                        "chat_id": g,
+                        "user_id": bot_id
+                    }).json()
+                    try:
+                        status = check["result"]["status"]
+                        if status in ["administrator", "creator"]:
+                            result += f"✅ Bot là admin của: {g}\n"
+                        else:
+                            result += f"❌ Bot KHÔNG phải admin của: {g}\n"
+                    except:
+                        result += f"⚠️ Không thể kiểm tra nhóm: {g}\n"
+                send_message(chat_id, result)
+                return jsonify(success=True)
 
             if text.startswith("/themcode"):
                 lines = text.replace("/themcode", "").strip().split("\n")
