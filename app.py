@@ -9,6 +9,7 @@ API_URL = f"https://api.telegram.org/bot{TOKEN}"
 ADMIN_ID = 8252036966
 GROUPS_FILE = "groups.json"
 USERS_FILE = "users.json"
+CODES_FILE = "codes.json"
 
 app = Flask(__name__)
 
@@ -32,12 +33,18 @@ def save_users(data):
     with open(USERS_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
 
+def load_codes():
+    if not os.path.exists(CODES_FILE):
+        return {"codes": []}
+    with open(CODES_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def save_codes(data):
+    with open(CODES_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4, ensure_ascii=False)
+
 def send_message(chat_id, text, reply_markup=None):
-    payload = {
-        "chat_id": chat_id,
-        "text": text,
-        "parse_mode": "HTML"
-    }
+    payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
     if reply_markup:
         payload["reply_markup"] = reply_markup
     requests.post(f"{API_URL}/sendMessage", json=payload)
@@ -68,7 +75,6 @@ def webhook():
         data = cq["data"]
         chat_id = cq["message"]["chat"]["id"]
         user_id = str(cq["from"]["id"])
-
         requests.post(f"{API_URL}/answerCallbackQuery", json={"callback_query_id": cq["id"]})
 
         users = load_users()
@@ -95,6 +101,7 @@ def webhook():
                 ref = users["users"][user_id]["ref"]
                 if ref and str(ref) in users["users"]:
                     users["users"][str(ref)]["points"] += 3000
+                    send_message(ref, "🎉 Bạn vừa nhận được <b>+3000 điểm</b> từ 1 lượt giới thiệu hợp lệ")
                 save_users(users)
 
             menu = {
@@ -116,12 +123,7 @@ def webhook():
         elif data == "invite":
             bot = requests.get(f"{API_URL}/getMe").json()
             link = f"https://t.me/{bot['result']['username']}?start={user_id}"
-            send_message(
-                chat_id,
-                f"👥 <b>LINK MỜI BẠN BÈ</b>\n{link}\n\n"
-                "📌 Mỗi lượt xác minh +3000 điểm\n"
-                "💰 Rút tối thiểu 10000 điểm"
-            )
+            send_message(chat_id, f"👥 <b>LINK MỜI BẠN BÈ</b>\n{link}")
             return jsonify(success=True)
 
         elif data == "account":
@@ -130,15 +132,33 @@ def webhook():
             return jsonify(success=True)
 
         elif data == "withdraw":
-            send_message(chat_id, "💳 Chức năng rút code sẽ mở sớm")
+            if int(user_id) == ADMIN_ID:
+                codes = load_codes()
+                send_message(chat_id, f"📦 Số code còn lại: <b>{len(codes['codes'])}</b>")
+                return jsonify(success=True)
+
+            if users["users"][user_id]["points"] < 10000:
+                send_message(chat_id, "❌ Bạn cần tối thiểu 10000 điểm để rút code")
+                return jsonify(success=True)
+
+            codes = load_codes()
+            if not codes["codes"]:
+                send_message(chat_id, "❌ Hiện đã hết code")
+                return jsonify(success=True)
+
+            code = codes["codes"].pop(0)
+            users["users"][user_id]["points"] -= 10000
+            save_users(users)
+            save_codes(codes)
+
+            send_message(chat_id, f"🎁 <b>CODE CỦA BẠN:</b>\n<code>{code}</code>")
             return jsonify(success=True)
 
         elif data == "stats":
             if int(user_id) != ADMIN_ID:
-                send_message(chat_id, "❌ Bạn không có quyền")
+                send_message(chat_id, "❌ Không có quyền")
                 return jsonify(success=True)
-            total = len(users["users"])
-            send_message(chat_id, f"📊 Tổng user: {total}")
+            send_message(chat_id, f"📊 Tổng user: {len(users['users'])}")
             return jsonify(success=True)
 
     if "message" in update:
@@ -164,9 +184,14 @@ def webhook():
                 send_message(chat_id, "Đã xóa nhóm")
                 return jsonify(success=True)
 
-            if text == "/listgroups":
-                data = load_groups()
-                send_message(chat_id, "\n".join(data["groups"]))
+            if text.startswith("/themcode"):
+                lines = text.replace("/themcode", "").strip().split("\n")
+                codes = load_codes()
+                for c in lines:
+                    if c.strip():
+                        codes["codes"].append(c.strip())
+                save_codes(codes)
+                send_message(chat_id, "Đã thêm code")
                 return jsonify(success=True)
 
         if text.startswith("/start"):
@@ -185,11 +210,7 @@ def webhook():
             if str(chat_id) not in users["users"]:
                 if ref == chat_id:
                     ref = None
-                users["users"][str(chat_id)] = {
-                    "ref": ref,
-                    "points": 0,
-                    "verified": False
-                }
+                users["users"][str(chat_id)] = {"ref": ref, "points": 0, "verified": False}
                 save_users(users)
 
             groups = load_groups()["groups"]
