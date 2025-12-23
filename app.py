@@ -5,6 +5,7 @@ from flask import Flask, request, jsonify
 
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
 API_URL = f"https://api.telegram.org/bot{TOKEN}"
+USER_STORAGE_ID = -1003326550194
 
 ADMIN_ID = 8252036966
 GROUPS_FILE = "groups.json"
@@ -48,6 +49,39 @@ def send_message(chat_id, text, reply_markup=None):
     if reply_markup:
         payload["reply_markup"] = reply_markup
     requests.post(f"{API_URL}/sendMessage", json=payload)
+def save_user_to_telegram(user_data):
+    requests.post(
+        f"{API_URL}/sendMessage",
+        json={
+            "chat_id": USER_STORAGE_ID,
+            "text": json.dumps(user_data, ensure_ascii=False)
+        }
+    )
+
+def load_users_from_telegram():
+    users = {}
+    offset = None
+
+    while True:
+        params = {"limit": 100}
+        if offset:
+            params["offset"] = offset
+
+        r = requests.get(f"{API_URL}/getUpdates", params=params).json()
+        results = r.get("result", [])
+        if not results:
+            break
+
+        for u in results:
+            if "message" in u and u["message"]["chat"]["id"] == USER_STORAGE_ID:
+                try:
+                    data = json.loads(u["message"]["text"])
+                    users[str(data["uid"])] = data
+                except:
+                    pass
+            offset = u["update_id"] + 1
+    return users
+
 
 def set_commands():
     requests.post(
@@ -225,18 +259,18 @@ def webhook():
                 try:
                     ref = int(parts[1])
                 except:
-                    pass
-
-            users = load_users()
-            if "users" not in users:
-                users["users"] = {}
-
-            if str(chat_id) not in users["users"]:
-                if ref == chat_id:
                     ref = None
-                users["users"][str(chat_id)] = {"ref": ref, "points": 0, "verified": False}
-                save_users(users)
 
+            if ref == chat_id:
+                ref = None
+
+            save_user_to_telegram({
+                "uid": chat_id,
+                "ref": ref,
+                "points": 0,
+                "verified": False
+            })
+        
             groups = load_groups()["groups"]
             send_message(
                 chat_id,
